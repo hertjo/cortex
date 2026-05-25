@@ -1,0 +1,167 @@
+/// <reference lib="webworker" />
+
+import { buildCotanLaplacian, estimateSpectralRadius } from "@/lib/laplacian";
+import { decodeCortexMesh } from "@/lib/mesh";
+import {
+  makeSimulatorState,
+  MODE_PRESETS,
+  seedSpiral,
+  step,
+  stimulate,
+  type ModeKey,
+  type SimulatorState,
+} from "@/lib/fhn";
+
+export type InboundMessage =
+  | { kind: "init"; meshBuffer: ArrayBuffer; mode: ModeKey }
+  | { kind: "setMode"; mode: ModeKey }
+  | { kind: "stimulate"; vertexIndex: number; amplitude?: number }
+  | { kind: "reset" }
+  | { kind: "setStepsPerFrame"; stepsPerFrame: number };
+
+export type OutboundMessage =
+  | {
+      kind: "ready";
+      vertexCount: number;
+      triangleCount: number;
+      positions: ArrayBuffer;
+      indices: ArrayBuffer;
+      hemisphere: ArrayBuffer;
+      dt: number;
+    }
+  | {
+      kind: "frame";
+      voltage: ArrayBuffer;
+      recovery: ArrayBuffer;
+      time: number;
+      avgV: number;
+      maxV: number;
+    };
+
+let state: SimulatorState | null = null;
+let stepsPerFrame = 4;
+let positionsRef: Float32Array | null = null;
+let indicesRef: Uint32Array | null = null;
+let hemiRef: Uint32Array | null = null;
+
+function pickFurthestVertex(positions: Float32Array): number {
+  // Lateral surface of the left precentral region: a vertex roughly at
+  // (-0.6, 0.0, 0.4) is a sensible default pacemaker location.
+  let best = 0;
+  let bestScore = -Infinity;
+  for (let i = 0; i < positions.length / 3; i++) {
+    const x = positions[i * 3];
+    const y = positions[i * 3 + 1];
+    const z = positions[i * 3 + 2];
+    const score = -Math.hypot(x + 0.6, y, z - 0.4);
+    if (score > bestScore) {
+      bestScore = score;
+      best = i;
+    }
+  }
+  return best;
+}
+
+function applyMode(mode: ModeKey): void {
+  if (!state) return;
+  const preset = MODE_PRESETS[mode];
+  state.params = {
+    ...preset,
+    pacemakerVertex: positionsRef ? pickFurthestVertex(positionsRef) : null,
+  };
+  // Reset voltage to resting and apply mode-specific initial condition.
+  for (let i = 0; i < state.u.length; i++) {
+    state.u[i] = -1.2;
+    state.v[i] = -0.6;
+  }
+  state.time = 0;
+  state.lastPacemakerFire = -1e9;
+  if (mode === "spiral") seedSpiral(state);
+  else if (mode === "sd" && state.params.pacemakerVertex != null) {
+    stimulate(state, state.params.pacemakerVertex, state.params.stimAmp);
+  } else if (mode === "sinus" && state.params.pacemakerVertex != null) {
+    stimulate(state, state.params.pacemakerVertex);
+    state.lastPacemakerFire = 0;
+  }
+}
+
+self.onmessage = (ev: MessageEvent<InboundMessage>) => {
+  const msg = ev.data;
+
+  if (msg.kind === "init") {
+    const mesh = decodeCortexMesh(msg.meshBuffer);
+    positionsRef = mesh.positions;
+    indicesRef = mesh.indices;
+    hemiRef = mesh.hemisphere;
+    const L = buildCotanLaplacian(mesh);
+    const spectral = estimateSpectralRadius(L, 32);
+    const preset = MODE_PRESETS[msg.mode];
+    const pacemakerVertex = pickFurthestVertex(mesh.positions);
+    state = makeSimulatorState(L, mesh.positions, { ...preset, pacemakerVertex }, spectral);
+    applyMode(msg.mode);
+    const ready: OutboundMessage = {
+      kind: "ready",
+      vertexCount: mesh.vertexCount,
+      triangleCount: mesh.triangleCount,
+      positions: mesh.positions.buffer as ArrayBuffer,
+      indices: mesh.indices.buffer as ArrayBuffer,
+      hemisphere: mesh.hemisphere.buffer as ArrayBuffer,
+      dt: state.dt,
+    };
+    (self as DedicatedWorkerGlobalScope).postMessage(ready);
+    tickLoop();
+    return;
+  }
+
+  if (!state) return;
+
+  switch (msg.kind) {
+    case "setMode":
+      applyMode(msg.mode);
+      break;
+    case "stimulate":
+      stimulate(state, msg.vertexIndex, msg.amplitude);
+      break;
+    case "reset":
+      for (let i = 0; i < state.u.length; i++) {
+        state.u[i] = -1.2;
+        state.v[i] = -0.6;
+      }
+      state.time = 0;
+      state.lastPacemakerFire = -1e9;
+      break;
+    case "setStepsPerFrame":
+      stepsPerFrame = Math.max(1, Math.min(32, msg.stepsPerFrame));
+      break;
+  }
+};
+
+function tickLoop(): void {
+  if (!state) return;
+  for (let s = 0; s < stepsPerFrame; s++) step(state);
+
+  let avg = 0;
+  let max = -Infinity;
+  for (let i = 0; i < state.u.length; i++) {
+    avg += state.u[i];
+    if (state.u[i] > max) max = state.u[i];
+  }
+  avg /= state.u.length;
+
+  const uCopy = new Float32Array(state.u);
+  const vCopy = new Float32Array(state.v);
+  const frame: OutboundMessage = {
+    kind: "frame",
+    voltage: uCopy.buffer,
+    recovery: vCopy.buffer,
+    time: state.time,
+    avgV: avg,
+    maxV: max,
+  };
+  (self as DedicatedWorkerGlobalScope).postMessage(frame, [uCopy.buffer, vCopy.buffer]);
+
+  // Avoid stalling the worker entirely; let inbound messages run.
+  setTimeout(tickLoop, 0);
+}
+
+export {};
