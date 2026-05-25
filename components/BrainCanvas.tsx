@@ -30,29 +30,31 @@ varying vec3 vPosition;
 uniform vec3 lightDir;
 
 vec3 colormap(float u) {
-  // u resting is about -1.27, depolarized peaks around +1.5. We compress
-  // the active range so transitions are visually punchy.
-  float t = clamp((u + 1.4) / 2.6, 0.0, 1.0);
-  vec3 navy   = vec3(0.020, 0.035, 0.075);
-  vec3 cyan   = vec3(0.080, 0.380, 0.780);
-  vec3 white  = vec3(0.760, 0.940, 0.980);
-  vec3 pink   = vec3(0.980, 0.420, 0.880);
+  // Map voltage to a darkness-first ramp: resting is near black, any
+  // depolarization above the firing threshold pops in cyan and then
+  // pink-hot. The breakpoints are tuned to the FHN nullcline crossings.
+  float t = clamp((u + 1.3) / 3.1, 0.0, 1.0);
+  vec3 dark   = vec3(0.012, 0.022, 0.055);
+  vec3 navy   = vec3(0.055, 0.110, 0.260);
+  vec3 cyan   = vec3(0.150, 0.580, 0.950);
+  vec3 white  = vec3(0.880, 0.960, 1.000);
+  vec3 pink   = vec3(1.000, 0.420, 0.900);
   vec3 hot    = vec3(1.000, 0.880, 1.000);
   vec3 c;
-  if (t < 0.20)      c = mix(navy, cyan,  t / 0.20);
-  else if (t < 0.45) c = mix(cyan, white, (t - 0.20) / 0.25);
-  else if (t < 0.75) c = mix(white, pink, (t - 0.45) / 0.30);
-  else               c = mix(pink, hot,   (t - 0.75) / 0.25);
+  if (t < 0.15)      c = mix(dark, navy,  t / 0.15);
+  else if (t < 0.40) c = mix(navy, cyan,  (t - 0.15) / 0.25);
+  else if (t < 0.60) c = mix(cyan, white, (t - 0.40) / 0.20);
+  else if (t < 0.80) c = mix(white, pink, (t - 0.60) / 0.20);
+  else               c = mix(pink, hot,   (t - 0.80) / 0.20);
   return c;
 }
 
 void main() {
   vec3 base = colormap(vVoltage);
   float lam = max(dot(normalize(vNormal), normalize(lightDir)), 0.0);
-  // The resting cortex stays dim and structured by the Lambertian term;
-  // depolarized regions blow past unity and bloom.
-  float exc = smoothstep(-1.0, 0.4, vVoltage);
-  vec3 lit = base * (0.20 + 0.35 * lam);
+  vec3 lit = base * (0.28 + 0.55 * lam);
+  // Once the vertex crosses the FHN threshold, emission scales sharply.
+  float exc = smoothstep(-0.5, 0.8, vVoltage);
   lit += base * exc * 1.8;
   gl_FragColor = vec4(lit, 1.0);
 }
@@ -62,12 +64,13 @@ type Props = {
   positions: Float32Array;
   indices: Uint32Array;
   normals: Float32Array;
-  voltage: Float32Array;
+  voltageRef: React.MutableRefObject<Float32Array | null>;
   slicerOffset: number;
   onPick: (vertexIndex: number) => void;
 };
 
-function CortexMesh({ positions, indices, normals, voltage, slicerOffset, onPick }: Props) {
+function CortexMesh({ positions, indices, normals, voltageRef, slicerOffset, onPick }: Props) {
+  const voltage = voltageRef.current ?? new Float32Array(positions.length / 3);
   const meshRef = useRef<THREE.Mesh>(null);
   const geometryRef = useRef<THREE.BufferGeometry>(null);
   const voltageAttribRef = useRef<THREE.BufferAttribute | null>(null);
@@ -107,14 +110,17 @@ function CortexMesh({ positions, indices, normals, voltage, slicerOffset, onPick
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Push voltage updates each frame.
+  // Push voltage updates each frame, reading the latest from the ref.
+  // Mutating an existing BufferAttribute with needsUpdate=true was not
+  // making it through to the GPU under Turbopack's worker pipeline.
+  // Replacing the attribute each frame forces a fresh upload.
   useFrame(() => {
-    const attr = voltageAttribRef.current;
-    if (!attr) return;
-    const dst = attr.array as Float32Array;
-    if (dst.length !== voltage.length) return;
-    dst.set(voltage);
-    attr.needsUpdate = true;
+    const live = voltageRef.current;
+    if (!live) return;
+    const fresh = new THREE.BufferAttribute(new Float32Array(live), 1);
+    fresh.setUsage(THREE.DynamicDrawUsage);
+    geometry.setAttribute("voltage", fresh);
+    voltageAttribRef.current = fresh;
     clipPlane.constant = slicerOffset;
   });
 
@@ -208,7 +214,7 @@ export default function BrainCanvas(props: Props) {
           minDistance={1.7}
           maxDistance={4.5}
           autoRotate
-          autoRotateSpeed={0.45}
+          autoRotateSpeed={0.15}
         />
         <EffectComposer multisampling={0}>
           <Bloom intensity={0.55} luminanceThreshold={0.78} luminanceSmoothing={0.55} mipmapBlur />

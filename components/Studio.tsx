@@ -27,7 +27,11 @@ export default function Studio() {
   const workerRef = useRef<Worker | null>(null);
   const [mesh, setMesh] = useState<CortexMesh | null>(null);
   const [normals, setNormals] = useState<Float32Array | null>(null);
-  const [voltage, setVoltage] = useState<Float32Array | null>(null);
+  // Voltage updates every worker frame; we keep it in a ref so the
+  // r3f useFrame callback always reads the freshest values, and also
+  // mirror it in state so the canvas re-renders on first arrival.
+  const voltageRef = useRef<Float32Array | null>(null);
+  const [voltageReady, setVoltageReady] = useState(false);
   const [time, setTime] = useState(0);
   const [avgV, setAvgV] = useState(0);
   const [mode, setMode] = useState<ModeKey>("sinus");
@@ -78,13 +82,14 @@ export default function Studio() {
         };
         setMesh(meshObj);
         setNormals(computeNormals(meshObj));
-        setVoltage(new Float32Array(m.vertexCount));
+        voltageRef.current = new Float32Array(m.vertexCount);
+        setVoltageReady(true);
         setVertexCount(m.vertexCount);
         setTriangleCount(m.triangleCount);
         channelVertsRef.current = pickChannelVertices(positions);
       } else if (m.kind === "frame") {
         const u = new Float32Array(m.voltage);
-        setVoltage(u);
+        voltageRef.current = u;
         setTime(m.time);
         setAvgV(m.avgV);
         const chans = channelVertsRef.current;
@@ -154,12 +159,12 @@ export default function Studio() {
 
       <main className="col-span-12 lg:col-span-9 flex flex-col gap-4">
         <Panel className="aspect-[16/10]" title="cortical surface">
-          {mesh && normals && voltage ? (
+          {mesh && normals && voltageReady ? (
             <BrainCanvas
               positions={mesh.positions}
               indices={mesh.indices}
               normals={normals}
-              voltage={voltage}
+              voltageRef={voltageRef}
               slicerOffset={slicerOffset}
               onPick={handlePick}
             />

@@ -34,13 +34,13 @@ export type ModeParams = {
 
 export const MODE_PRESETS: Record<ModeKey, Omit<ModeParams, "pacemakerVertex">> = {
   sinus: {
-    D: 0.025,
-    epsilon: 0.04,
+    D: 0.018,
+    epsilon: 0.014,
     a: 0.7,
     b: 0.8,
-    stimAmp: 2.2,
-    stimRadius: 0.12,
-    pacemakerPeriod: 8.0,
+    stimAmp: 1.7,
+    stimRadius: 0.20,
+    pacemakerPeriod: 14.0,
     description: "focal pacemaker, regular target waves",
   },
   sd: {
