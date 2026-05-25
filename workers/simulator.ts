@@ -136,8 +136,11 @@ self.onmessage = (ev: MessageEvent<InboundMessage>) => {
   }
 };
 
+const TARGET_FRAME_MS = 33; // 30 Hz cap
+
 function tickLoop(): void {
   if (!state) return;
+  const t0 = performance.now();
   for (let s = 0; s < stepsPerFrame; s++) step(state);
 
   let avg = 0;
@@ -160,8 +163,12 @@ function tickLoop(): void {
   };
   (self as DedicatedWorkerGlobalScope).postMessage(frame, [uCopy.buffer, vCopy.buffer]);
 
-  // Avoid stalling the worker entirely; let inbound messages run.
-  setTimeout(tickLoop, 0);
+  // Cap the tick rate so the main thread can keep up. Posting frames
+  // faster than the renderer drains them queues messages and eventually
+  // exhausts the heap.
+  const elapsed = performance.now() - t0;
+  const wait = Math.max(0, TARGET_FRAME_MS - elapsed);
+  setTimeout(tickLoop, wait);
 }
 
 export {};

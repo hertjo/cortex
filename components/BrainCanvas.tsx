@@ -1,6 +1,6 @@
 "use client";
 
-import { Canvas, useFrame, useThree } from "@react-three/fiber";
+import { Canvas, useFrame, useThree, type ThreeEvent } from "@react-three/fiber";
 import { OrbitControls } from "@react-three/drei";
 import { EffectComposer, Bloom } from "@react-three/postprocessing";
 import { useEffect, useMemo, useRef } from "react";
@@ -118,46 +118,36 @@ function CortexMesh({ positions, indices, normals, voltage, slicerOffset, onPick
     clipPlane.constant = slicerOffset;
   });
 
-  // Raycast on click to find the nearest vertex.
-  const { camera, raycaster, gl } = useThree();
-  useEffect(() => {
-    const canvas = gl.domElement;
-    const onClick = (e: MouseEvent) => {
-      if (!meshRef.current) return;
-      const rect = canvas.getBoundingClientRect();
-      const x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
-      const y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
-      raycaster.setFromCamera(new THREE.Vector2(x, y), camera);
-      raycaster.params.Mesh = { threshold: 0 };
-      const hits = raycaster.intersectObject(meshRef.current, false);
-      if (hits.length === 0) return;
-      const hit = hits[0];
-      // Pick the closest of the triangle's three vertices.
-      if (hit.face) {
-        const candidates = [hit.face.a, hit.face.b, hit.face.c];
-        let best = candidates[0];
-        let bestD2 = Infinity;
-        const p = hit.point;
-        for (const ci of candidates) {
-          const dx = positions[ci * 3] - p.x;
-          const dy = positions[ci * 3 + 1] - p.y;
-          const dz = positions[ci * 3 + 2] - p.z;
-          const d2 = dx * dx + dy * dy + dz * dz;
-          if (d2 < bestD2) {
-            bestD2 = d2;
-            best = ci;
-          }
-        }
-        onPick(best);
+  const handleClick = (e: ThreeEvent<MouseEvent>) => {
+    e.stopPropagation();
+    if (!e.face) return;
+    const candidates = [e.face.a, e.face.b, e.face.c];
+    let best = candidates[0];
+    let bestD2 = Infinity;
+    const p = e.point;
+    for (const ci of candidates) {
+      const dx = positions[ci * 3] - p.x;
+      const dy = positions[ci * 3 + 1] - p.y;
+      const dz = positions[ci * 3 + 2] - p.z;
+      const d2 = dx * dx + dy * dy + dz * dz;
+      if (d2 < bestD2) {
+        bestD2 = d2;
+        best = ci;
       }
-    };
-    canvas.addEventListener("click", onClick);
-    return () => canvas.removeEventListener("click", onClick);
-  }, [camera, raycaster, gl, positions, onPick]);
+    }
+    onPick(best);
+  };
 
   void geometryRef;
   void materialRef;
-  return <mesh ref={meshRef} geometry={geometry} material={material} />;
+  return (
+    <mesh
+      ref={meshRef}
+      geometry={geometry}
+      material={material}
+      onClick={handleClick}
+    />
+  );
 }
 
 function Backdrop() {
