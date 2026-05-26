@@ -54,6 +54,13 @@ rh_path = fetch(RH_URL, "rh.pial")
 lh_pos, lh_tri = load_pial(lh_path)
 rh_pos, rh_tri = load_pial(rh_path)
 
+# FreeSurfer's lh.pial and rh.pial use opposite winding orders so that
+# each hemisphere has outward-pointing normals in its own coordinate
+# frame. After merging both into one mesh we need the windings to agree;
+# we flip the rh triangles so the merged mesh has outward normals
+# everywhere.
+rh_tri = rh_tri[:, [0, 2, 1]]
+
 # Shift RH triangle indices into the merged vertex array.
 rh_tri_shifted = rh_tri + lh_pos.shape[0]
 positions = np.concatenate([lh_pos, rh_pos], axis=0)
