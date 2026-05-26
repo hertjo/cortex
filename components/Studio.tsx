@@ -38,7 +38,11 @@ export default function Studio() {
   const [avgV, setAvgV] = useState(0);
   const [mode, setMode] = useState<ModeKey>("sinus");
   const [sliceAxis, setSliceAxis] = useState<SliceAxis>("y");
-  const [slicerOffset, setSlicerOffset] = useState(0.0);
+  // Default to the far end of the range so the 3D view shows the full
+  // brain. Dragging the slicer inward then carves a clipping plane
+  // through it; the 2D panel always shows the cross-section at the
+  // chosen offset regardless of clipping.
+  const [slicerOffset, setSlicerOffset] = useState(SLICE_MAX);
   const [stepsPerFrame, setStepsPerFrame] = useState(2);
   const [vertexCount, setVertexCount] = useState(0);
   const [triangleCount, setTriangleCount] = useState(0);
