@@ -4,12 +4,14 @@ import dynamic from "next/dynamic";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { computeNormals, type CortexMesh } from "@/lib/mesh";
 import type { ModeKey } from "@/lib/fhn";
+import type { SliceAxis } from "@/lib/sliceContour";
 import type {
   InboundMessage,
   OutboundMessage,
 } from "@/workers/simulator";
 import Controls from "./Controls";
 import EEGTrace from "./EEGTrace";
+import SliceView from "./SliceView";
 
 const BrainCanvas = dynamic(() => import("./BrainCanvas"), {
   ssr: false,
@@ -35,7 +37,8 @@ export default function Studio() {
   const [time, setTime] = useState(0);
   const [avgV, setAvgV] = useState(0);
   const [mode, setMode] = useState<ModeKey>("sinus");
-  const [slicerOffset, setSlicerOffset] = useState(SLICE_MAX);
+  const [sliceAxis, setSliceAxis] = useState<SliceAxis>("y");
+  const [slicerOffset, setSlicerOffset] = useState(0.0);
   const [stepsPerFrame, setStepsPerFrame] = useState(2);
   const [vertexCount, setVertexCount] = useState(0);
   const [triangleCount, setTriangleCount] = useState(0);
@@ -137,6 +140,8 @@ export default function Studio() {
           <Controls
             mode={mode}
             onMode={handleMode}
+            sliceAxis={sliceAxis}
+            onSliceAxis={setSliceAxis}
             slicerOffset={slicerOffset}
             onSlicer={setSlicerOffset}
             sliceMin={SLICE_MIN}
@@ -157,14 +162,15 @@ export default function Studio() {
         </Panel>
       </aside>
 
-      <main className="col-span-12 lg:col-span-9 flex flex-col gap-4">
-        <Panel className="aspect-[16/10]" title="cortical surface">
+      <main className="col-span-12 lg:col-span-6 flex flex-col gap-4">
+        <Panel className="aspect-[5/4]" title="cortical surface">
           {mesh && normals && voltageReady ? (
             <BrainCanvas
               positions={mesh.positions}
               indices={mesh.indices}
               normals={normals}
               voltageRef={voltageRef}
+              sliceAxis={sliceAxis}
               slicerOffset={slicerOffset}
               onPick={handlePick}
             />
@@ -178,6 +184,24 @@ export default function Studio() {
           <EEGTrace sampleRef={eegSample} />
         </Panel>
       </main>
+
+      <aside className="col-span-12 lg:col-span-3 flex flex-col gap-4">
+        <Panel className="aspect-square" title="slice view">
+          {mesh && voltageReady ? (
+            <SliceView
+              positions={mesh.positions}
+              indices={mesh.indices}
+              voltageRef={voltageRef}
+              axis={sliceAxis}
+              offset={slicerOffset}
+            />
+          ) : (
+            <div className="w-full h-full grid place-items-center text-white/35 text-xs uppercase tracking-[0.24em]">
+              waiting for mesh
+            </div>
+          )}
+        </Panel>
+      </aside>
     </div>
   );
 }

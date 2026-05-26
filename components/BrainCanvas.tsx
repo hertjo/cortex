@@ -5,6 +5,7 @@ import { OrbitControls } from "@react-three/drei";
 import { EffectComposer, Bloom } from "@react-three/postprocessing";
 import { useEffect, useMemo, useRef } from "react";
 import * as THREE from "three";
+import type { SliceAxis } from "@/lib/sliceContour";
 
 const VERTEX_SHADER = /* glsl */ `
 attribute float voltage;
@@ -65,11 +66,12 @@ type Props = {
   indices: Uint32Array;
   normals: Float32Array;
   voltageRef: React.MutableRefObject<Float32Array | null>;
+  sliceAxis: SliceAxis;
   slicerOffset: number;
   onPick: (vertexIndex: number) => void;
 };
 
-function CortexMesh({ positions, indices, normals, voltageRef, slicerOffset, onPick }: Props) {
+function CortexMesh({ positions, indices, normals, voltageRef, sliceAxis, slicerOffset, onPick }: Props) {
   const voltage = voltageRef.current ?? new Float32Array(positions.length / 3);
   const meshRef = useRef<THREE.Mesh>(null);
   const geometryRef = useRef<THREE.BufferGeometry>(null);
@@ -93,6 +95,19 @@ function CortexMesh({ positions, indices, normals, voltageRef, slicerOffset, onP
   }, [positions, indices, normals]);
 
   const clipPlane = useMemo(() => new THREE.Plane(new THREE.Vector3(0, -1, 0), 0), []);
+
+  // Orient the clip plane to match the chosen slice axis. The plane
+  // normal points in the negative axis direction so that the visible
+  // half-space is the one with smaller axis value than the offset.
+  useEffect(() => {
+    const n =
+      sliceAxis === "x"
+        ? new THREE.Vector3(-1, 0, 0)
+        : sliceAxis === "y"
+        ? new THREE.Vector3(0, -1, 0)
+        : new THREE.Vector3(0, 0, -1);
+    clipPlane.normal.copy(n);
+  }, [sliceAxis, clipPlane]);
 
   const material = useMemo(() => {
     const m = new THREE.ShaderMaterial({

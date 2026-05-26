@@ -1,10 +1,13 @@
 "use client";
 
 import type { ModeKey } from "@/lib/fhn";
+import type { SliceAxis } from "@/lib/sliceContour";
 
 type Props = {
   mode: ModeKey;
   onMode: (m: ModeKey) => void;
+  sliceAxis: SliceAxis;
+  onSliceAxis: (a: SliceAxis) => void;
   slicerOffset: number;
   onSlicer: (v: number) => void;
   sliceMin: number;
@@ -20,9 +23,17 @@ const MODES: Array<{ key: ModeKey; label: string; subtitle: string }> = [
   { key: "spiral", label: "spiral reentry", subtitle: "focal seizure analog" },
 ];
 
+const SLICE_AXES: Array<{ key: SliceAxis; label: string; full: string }> = [
+  { key: "y", label: "axial", full: "horizontal · top-down" },
+  { key: "x", label: "sagittal", full: "vertical · left-right" },
+  { key: "z", label: "coronal", full: "vertical · front-back" },
+];
+
 export default function Controls({
   mode,
   onMode,
+  sliceAxis,
+  onSliceAxis,
   slicerOffset,
   onSlicer,
   sliceMin,
@@ -62,11 +73,31 @@ export default function Controls({
       </section>
 
       <section>
-        <div className="flex items-baseline justify-between mb-2.5">
+        <div className="flex items-baseline justify-between mb-2">
           <SectionLabel>slicer</SectionLabel>
           <span className="font-mono text-[11px] text-white/60 tabular-nums">
-            y = {slicerOffset.toFixed(2)}
+            {sliceAxis} = {slicerOffset.toFixed(2)}
           </span>
+        </div>
+        <div className="grid grid-cols-3 gap-1.5 mb-3">
+          {SLICE_AXES.map((a) => {
+            const active = a.key === sliceAxis;
+            return (
+              <button
+                key={a.key}
+                onClick={() => onSliceAxis(a.key)}
+                className={[
+                  "rounded-lg px-1.5 py-1 text-[10.5px] tracking-tight transition-colors border",
+                  active
+                    ? "border-cyan-400/55 bg-cyan-400/[0.08] text-white"
+                    : "border-white/[0.07] bg-white/[0.02] text-white/55 hover:border-white/20 hover:text-white",
+                ].join(" ")}
+                title={a.full}
+              >
+                {a.label}
+              </button>
+            );
+          })}
         </div>
         <input
           type="range"
@@ -78,8 +109,8 @@ export default function Controls({
           className="w-full"
         />
         <div className="text-[10px] text-white/40 mt-1.5 leading-snug">
-          carve a horizontal plane through the cortex to expose the wave decay
-          into white matter.
+          the 3D view clips the cortex at this plane; the 2D slice panel
+          renders the cross-section curve, colored live by voltage.
         </div>
       </section>
 
