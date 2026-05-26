@@ -1,14 +1,15 @@
 # Cortex
 
-Real-time reaction-diffusion simulator on the fsaverage5 cortical
-surface. FitzHugh-Nagumo dynamics integrated on a 20 484 vertex triangle
-mesh, in the browser, with a Web Worker driving the integrator.
+Real-time reaction-diffusion simulator on the fsaverage cortical
+surface. FitzHugh-Nagumo dynamics integrated on a 327 684 vertex
+triangle mesh, in the browser, with a Web Worker driving the
+integrator.
 
 ![demo](./public/demo.gif)
 
 ## Math
 
-The cortex is modeled as a 2-manifold sampled by the fsaverage5 pial
+The cortex is modeled as a 2-manifold sampled by the fsaverage pial
 surface (left and right hemispheres merged). On this surface we solve
 
 ```
@@ -44,10 +45,10 @@ per step.
 
 ## Brain mesh
 
-The mesh in `public/brain.bin` is the fsaverage5 pial surface, packed
+The mesh in `public/brain.bin` is the fsaverage pial surface, packed
 into a flat little-endian binary buffer (vertex count, triangle count,
 positions, indices, hemisphere id). Source: `lh.pial` and `rh.pial`
-from the FreeSurfer 5.3 fsaverage5 subject, mirrored in the CBIG
+from the FreeSurfer 5.3 fsaverage subject, mirrored in the CBIG
 `Schaefer2018_LocalGlobal` distribution (MIT). To regenerate:
 
 ```bash

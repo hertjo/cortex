@@ -52,9 +52,14 @@ vec3 colormap(float u) {
 
 void main() {
   vec3 base = colormap(vVoltage);
-  float lam = max(dot(normalize(vNormal), normalize(lightDir)), 0.0);
-  vec3 lit = base * (0.28 + 0.55 * lam);
-  // Once the vertex crosses the FHN threshold, emission scales sharply.
+  vec3 N = normalize(vNormal);
+  // Camera-relative shading on N (already in view space) plus a tilted
+  // key light gives both depth cues and a symmetric appearance across
+  // the rotating brain.
+  float facing = max(0.0, N.z);
+  float key = max(0.0, dot(N, normalize(lightDir)));
+  float lam = 0.55 * facing + 0.45 * key;
+  vec3 lit = base * (0.28 + 0.70 * lam);
   float exc = smoothstep(-0.5, 0.8, vVoltage);
   lit += base * exc * 1.8;
   gl_FragColor = vec4(lit, 1.0);
@@ -125,10 +130,6 @@ function CortexMesh({ positions, indices, normals, voltageRef, sliceAxis, slicer
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Push voltage updates each frame, reading the latest from the ref.
-  // Mutating an existing BufferAttribute with needsUpdate=true was not
-  // making it through to the GPU under Turbopack's worker pipeline.
-  // Replacing the attribute each frame forces a fresh upload.
   useFrame(() => {
     const live = voltageRef.current;
     if (!live) return;

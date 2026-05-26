@@ -1,10 +1,12 @@
 """
-Convert FreeSurfer fsaverage5 left and right hemisphere .pial surfaces
+Convert FreeSurfer fsaverage6 left and right hemisphere .pial surfaces
 into a single packed binary buffer for the browser.
 
-The fsaverage5 surfaces ship with FreeSurfer and are mirrored in many
-academic repositories. We download from CBIG (Yeo Lab, MIT-licensed
-Schaefer2018 distribution) by default.
+fsaverage6 has roughly 40k vertices per hemisphere, giving smooth gyri
+and sulci while remaining tractable for real-time fhn integration in
+the browser. fsaverage (full resolution, 163k vertices per hemisphere)
+is too heavy to step at interactive rates client-side. Switch the
+resolution by editing the SUBJECT constant below.
 
 Output layout (little-endian):
     uint32   vertex_count   N
@@ -21,12 +23,14 @@ import os, sys, struct, urllib.request
 import numpy as np
 import nibabel as nib
 
-LH_URL = (
+SUBJECT = "fsaverage"  # one of fsaverage5, fsaverage6, fsaverage
+BASE = (
     "https://raw.githubusercontent.com/ThomasYeoLab/CBIG/master/"
     "stable_projects/brain_parcellation/Schaefer2018_LocalGlobal/"
-    "Parcellations/FreeSurfer5.3/fsaverage5/surf/lh.pial"
+    f"Parcellations/FreeSurfer5.3/{SUBJECT}/surf"
 )
-RH_URL = LH_URL.replace("lh.pial", "rh.pial")
+LH_URL = f"{BASE}/lh.pial"
+RH_URL = f"{BASE}/rh.pial"
 
 OUT_PATH = sys.argv[1] if len(sys.argv) > 1 else "public/brain.bin"
 CACHE_DIR = "/tmp"
@@ -54,12 +58,28 @@ rh_path = fetch(RH_URL, "rh.pial")
 lh_pos, lh_tri = load_pial(lh_path)
 rh_pos, rh_tri = load_pial(rh_path)
 
-# FreeSurfer's lh.pial and rh.pial use opposite winding orders so that
-# each hemisphere has outward-pointing normals in its own coordinate
-# frame. After merging both into one mesh we need the windings to agree;
-# we flip the rh triangles so the merged mesh has outward normals
-# everywhere.
-rh_tri = rh_tri[:, [0, 2, 1]]
+# FreeSurfer winding conventions differ between fsaverage subjects.
+# Empirically: fsaverage5 needs rh flipped to get outward normals;
+# fsaverage (full) already has both hemispheres consistent and needs no
+# flip. Detect this by inspecting the first triangle of each hemisphere
+# and seeing whether its computed normal points outward from the
+# hemisphere centroid.
+def hemisphere_needs_flip(pos, tri):
+    """Majority-vote: do triangle normals point outward from the centroid?"""
+    center = pos.mean(axis=0)
+    a = pos[tri[:, 0]]
+    b = pos[tri[:, 1]]
+    c = pos[tri[:, 2]]
+    normals = np.cross(b - a, c - a)
+    centroid_to_face = ((a + b + c) / 3.0) - center
+    aligned = np.einsum("ij,ij->i", normals, centroid_to_face)
+    return float(np.mean(aligned > 0)) < 0.5
+
+
+if hemisphere_needs_flip(lh_pos, lh_tri):
+    lh_tri = lh_tri[:, [0, 2, 1]]
+if hemisphere_needs_flip(rh_pos, rh_tri):
+    rh_tri = rh_tri[:, [0, 2, 1]]
 
 # Shift RH triangle indices into the merged vertex array.
 rh_tri_shifted = rh_tri + lh_pos.shape[0]

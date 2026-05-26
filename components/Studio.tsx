@@ -43,7 +43,7 @@ export default function Studio() {
   // through it; the 2D panel always shows the cross-section at the
   // chosen offset regardless of clipping.
   const [slicerOffset, setSlicerOffset] = useState(SLICE_MAX);
-  const [stepsPerFrame, setStepsPerFrame] = useState(2);
+  const [stepsPerFrame, setStepsPerFrame] = useState(1);
   const [vertexCount, setVertexCount] = useState(0);
   const [triangleCount, setTriangleCount] = useState(0);
 
@@ -77,9 +77,11 @@ export default function Studio() {
     worker.onmessage = (ev: MessageEvent<OutboundMessage>) => {
       const m = ev.data;
       if (m.kind === "ready") {
-        const positions = new Float32Array(m.positions);
-        const indices = new Uint32Array(m.indices);
-        const hemisphere = new Uint32Array(m.hemisphere);
+        // The worker sends Float32Array / Uint32Array, each on its
+        // own freshly-allocated buffer. We can use them directly.
+        const positions = m.positions;
+        const indices = m.indices;
+        const hemisphere = m.hemisphere;
         const meshObj: CortexMesh = {
           positions,
           indices,
@@ -179,9 +181,7 @@ export default function Studio() {
               onPick={handlePick}
             />
           ) : (
-            <div className="w-full h-full grid place-items-center text-white/35 text-xs uppercase tracking-[0.24em]">
-              loading fsaverage5 pial surface...
-            </div>
+            <LoadingState />
           )}
         </Panel>
         <Panel className="h-[160px]" title="virtual scalp electrodes">
@@ -206,6 +206,26 @@ export default function Studio() {
           )}
         </Panel>
       </aside>
+    </div>
+  );
+}
+
+function LoadingState() {
+  return (
+    <div className="w-full h-full grid place-items-center">
+      <div className="text-center space-y-3">
+        <div className="text-[11px] uppercase tracking-[0.28em] text-white/55">
+          loading fsaverage pial surface
+        </div>
+        <div className="text-[10px] text-white/30">
+          downloading 13&#8239;MB mesh, building cotangent laplacian,
+          <br />
+          estimating spectral radius. one-time precompute.
+        </div>
+        <div className="mt-4 mx-auto h-[3px] w-44 rounded-full bg-white/[0.06] overflow-hidden">
+          <div className="h-full w-1/3 bg-gradient-to-r from-cyan-400/60 via-purple-400/60 to-pink-400/60 animate-pulse" />
+        </div>
+      </div>
     </div>
   );
 }

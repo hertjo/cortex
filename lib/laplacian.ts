@@ -64,12 +64,13 @@ export function buildCotanLaplacian(mesh: CortexMesh): CotanLaplacian {
   const { positions, indices, vertexCount, triangleCount } = mesh;
 
   // Step 1: collect off-diagonal weight contributions.
-  // Use a map keyed by (i * N + j) summed over the two triangles sharing edge (i, j).
-  const edgeWeight = new Map<bigint, number>();
+  // Use a Number-keyed map; with vertexCount up to ~330k the product
+  // a * vertexCount + b stays well below 2^53 and BigInt is avoided.
+  const edgeWeight = new Map<number, number>();
   const addEdge = (i: number, j: number, w: number) => {
     const a = Math.min(i, j);
     const b = Math.max(i, j);
-    const key = (BigInt(a) << 24n) | BigInt(b);
+    const key = a * vertexCount + b;
     edgeWeight.set(key, (edgeWeight.get(key) ?? 0) + w);
   };
 
@@ -120,8 +121,8 @@ export function buildCotanLaplacian(mesh: CortexMesh): CotanLaplacian {
   const adj: number[][] = Array.from({ length: vertexCount }, () => []);
   const adjW: number[][] = Array.from({ length: vertexCount }, () => []);
   for (const [key, w] of edgeWeight.entries()) {
-    const a = Number(key >> 24n);
-    const b = Number(key & 0xffffffn);
+    const a = Math.floor(key / vertexCount);
+    const b = key - a * vertexCount;
     adj[a].push(b);
     adjW[a].push(w);
     adj[b].push(a);

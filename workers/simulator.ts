@@ -24,9 +24,9 @@ export type OutboundMessage =
       kind: "ready";
       vertexCount: number;
       triangleCount: number;
-      positions: ArrayBuffer;
-      indices: ArrayBuffer;
-      hemisphere: ArrayBuffer;
+      positions: Float32Array;
+      indices: Uint32Array;
+      hemisphere: Uint32Array;
       dt: number;
     }
   | {
@@ -99,16 +99,25 @@ self.onmessage = (ev: MessageEvent<InboundMessage>) => {
     const pacemakerVertex = pickFurthestVertex(mesh.positions);
     state = makeSimulatorState(L, mesh.positions, { ...preset, pacemakerVertex }, spectral);
     applyMode(msg.mode);
+    // Slice the views into freshly-allocated TypedArrays so each one
+    // carries only its own data (the underlying brain.bin buffer is
+    // shared between all three views, so sending .buffer would ship
+    // the entire 13 MB to the main thread, and three concurrent views
+    // of it would all interpret the same bytes differently).
     const ready: OutboundMessage = {
       kind: "ready",
       vertexCount: mesh.vertexCount,
       triangleCount: mesh.triangleCount,
-      positions: mesh.positions.buffer as ArrayBuffer,
-      indices: mesh.indices.buffer as ArrayBuffer,
-      hemisphere: mesh.hemisphere.buffer as ArrayBuffer,
+      positions: new Float32Array(mesh.positions),
+      indices: new Uint32Array(mesh.indices),
+      hemisphere: new Uint32Array(mesh.hemisphere),
       dt: state.dt,
     };
-    (self as DedicatedWorkerGlobalScope).postMessage(ready);
+    (self as DedicatedWorkerGlobalScope).postMessage(ready, [
+      ready.positions.buffer,
+      ready.indices.buffer,
+      ready.hemisphere.buffer,
+    ]);
     tickLoop();
     return;
   }
